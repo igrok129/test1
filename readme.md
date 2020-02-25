@@ -7,6 +7,8 @@
 4. Войти в контейнер app docker exec -ti {app-container-name} sh
 5. Внутри контейнера app, выполнить:
 
+composer install
+
 php artisan key:generate
 
 php artisan migrate
