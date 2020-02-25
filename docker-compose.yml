@@ -1,0 +1,88 @@
+version: '3'
+
+networks:
+  backend-network:
+    driver: bridge
+  frontend-network:
+    driver: bridge
+
+volumes:
+  home-dir:
+  experum-db:
+  experum-db-test:
+
+services:
+  app: &app-service-template
+    build:
+      context: ./docker/app
+    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
+    volumes:
+      - .:/app/:rw
+      - home-dir:/home/user
+    environment:
+      FPM_PORT: &php-fpm-port 9000
+      FPM_USER: "${USER_ID:-1000}"
+      FPM_GROUP: "${GROUP_ID:-1000}"
+      HOME: /home/user
+      APP_URL: http://nginx
+    command: keep-alive.sh
+    depends_on:
+      - db
+    networks:
+      - backend-network
+      - frontend-network
+
+  &php-fpm-service php-fpm:
+    <<: *app-service-template
+    user: 'root:root'
+    restart: always
+    hostname: *php-fpm-service
+    ports: [*php-fpm-port]
+    entrypoint: /fpm-entrypoint.sh
+    command: php-fpm --nodaemonize -d "opcache.enable=0" -d "display_startup_errors=On" -d "display_errors=On" -d "error_reporting=E_ALL"
+    networks:
+      - backend-network
+      - frontend-network
+
+  nginx:
+    build:
+      context: ./docker/nginx
+    restart: always
+    working_dir: /usr/share/nginx/html
+    environment:
+      FPM_HOST: php-fpm
+      FPM_PORT: *php-fpm-port
+      ROOT_DIR: '/app/public'
+    volumes:
+      - .:/app:ro
+    ports: ['666:80']
+    depends_on:
+      - *php-fpm-service
+    networks:
+      - frontend-network
+
+  db:
+    image: mysql:8.0.15
+    restart: always
+    environment:
+      MYSQL_DATABASE: experum
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_HOST: '%'
+    volumes:
+      - experum-db:/var/lib/mysql/
+      - ./docker/mysql/my.cnf:/etc/mysql/my.cnf
+    networks:
+      - backend-network
+
+  db-test:
+    image: mysql:8.0.15
+    restart: always
+    environment:
+      MYSQL_DATABASE: experum-test
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_HOST: '%'
+    volumes:
+      - experum-db-test:/var/lib/mysql/
+      - ./docker/mysql/my.cnf:/etc/mysql/my.cnf
+    networks:
+      - backend-network
